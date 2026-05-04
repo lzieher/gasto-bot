@@ -25,10 +25,12 @@ def _parse_amount(value: str) -> float:
     return float(s) if s else 0.0
 
 
-def append_expense(concepto: str, monto: int, pagador: str, fecha: datetime) -> None:
+def append_expense(concepto: str, monto: int, pagador: str, fecha) -> None:
     ws = _get_worksheet()
     fecha_str = fecha.strftime("%d/%m/%Y")
-    ws.append_row([fecha_str, concepto, monto, pagador], value_input_option="USER_ENTERED")
+    col_a = ws.col_values(1)
+    next_row = len(col_a) + 1
+    ws.update(f"A{next_row}:D{next_row}", [[fecha_str, concepto, monto, pagador]])
 
 
 def delete_last_expense(pagador: str) -> tuple[bool, str]:
