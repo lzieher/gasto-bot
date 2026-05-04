@@ -15,7 +15,7 @@ from parser import parse_expense
 from sheets import append_expense, delete_last_expense, get_balance, get_monthly_summary
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 
 def _fmt(amount: float) -> str:
