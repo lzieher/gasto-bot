@@ -1,8 +1,11 @@
 import os
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GOOGLE_SHEET_ID = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_CREDENTIALS_JSON = os.environ["GOOGLE_CREDENTIALS_JSON"]
-ALLOWED_USER_ID = int(os.environ["ALLOWED_USER_ID"])
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
-PORT = int(os.environ.get("PORT", 8443))
+LUCA_USER_ID = int(os.environ["LUCA_USER_ID"])
+MORITA_USER_ID = int(os.environ["MORITA_USER_ID"])
+ALLOWED_USER_IDS = {LUCA_USER_ID: "Luca", MORITA_USER_ID: "Morita"}
+WEBHOOK_URL = ""
+PORT = 8443

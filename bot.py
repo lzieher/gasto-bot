@@ -15,135 +15,118 @@ from parser import parse_expense
 from sheets import append_expense, delete_last_expense, get_balance, get_monthly_summary
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
 
 def _fmt(amount: float) -> str:
     return f"{int(amount):,}".replace(",", ".")
 
 
-def _is_authorized(update: Update) -> bool:
-    return update.effective_user.id == config.ALLOWED_USER_ID
+def _get_payer(update: Update) -> str | None:
+    return config.ALLOWED_USER_IDS.get(update.effective_user.id)
 
-
-# ── handlers ──────────────────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update):
+    payer = _get_payer(update)
+    if not payer:
         return
 
     text = update.message.text.strip()
     status_msg = await update.message.reply_text("⏳ Procesando...")
 
     try:
-        parsed = parse_expense(text)
+        parsed = parse_expense(text, sender_name=payer)
     except Exception as e:
         logger.error("Parse error: %s", e)
-        await status_msg.edit_text(
-            "❌ No pude entender el mensaje.\nProbá: `Verdulería 5900`",
-            parse_mode="Markdown",
-        )
+        await status_msg.edit_text("No pude entender el mensaje.\nProbá: Verdulería 5900")
         return
 
     concepto = parsed.get("concepto", "").strip()
     monto = parsed.get("monto")
-    pagador = parsed.get("pagador", "Luca").strip() or "Luca"
+    pagador = parsed.get("pagador", payer).strip() or payer
 
     if not monto:
         keyboard = [[InlineKeyboardButton("✏️ Escribir de nuevo", callback_data="redo")]]
         await status_msg.edit_text(
-            f"No detecté el monto en: _{text}_\n\nProbá: `{concepto} [monto]`",
+            f"No detecté el monto en: {text}\n\nProbá: {concepto} [monto]",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
         )
         return
 
     try:
         fecha = update.message.date
         append_expense(concepto, int(monto), pagador, fecha)
-        await status_msg.edit_text(
-            f"✅ *{concepto}* — ${_fmt(monto)} ({pagador}) guardado.",
-            parse_mode="Markdown",
-        )
+        await status_msg.edit_text(f"OK: {concepto} — ${_fmt(monto)} ({pagador}) guardado.")
     except Exception as e:
         logger.error("Sheets error: %s", e)
-        await status_msg.edit_text("❌ Error al guardar en el Sheet. Revisá los logs.")
+        await status_msg.edit_text("Error al guardar en el Sheet.")
 
 
 async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update):
+    payer = _get_payer(update)
+    if not payer:
         return
-    success, description = delete_last_expense("Luca")
+    success, description = delete_last_expense(payer)
     if success:
-        await update.message.reply_text(f"↩️ Borrado: {description}")
+        await update.message.reply_text(f"Borrado: {description}")
     else:
-        await update.message.reply_text("No encontré ningún gasto de Luca para borrar.")
+        await update.message.reply_text(f"No encontré ningún gasto de {payer} para borrar.")
 
 
 async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update):
+    if not _get_payer(update):
         return
-
     totals = get_balance()
     if not totals:
         await update.message.reply_text("No hay gastos cargados aún.")
         return
-
-    lines = ["📊 *Balance total*\n"]
-    for payer, total in sorted(totals.items()):
-        lines.append(f"  {payer}: ${_fmt(total)}")
-
+    lines = ["Balance total\n"]
+    for p, t in sorted(totals.items()):
+        lines.append(f"  {p}: ${_fmt(t)}")
     luca = totals.get("Luca", 0.0)
     morita = totals.get("Morita", 0.0)
     diff = luca - morita
     if diff > 0:
-        lines.append(f"\n→ Morita le debe a Luca *${_fmt(diff)}*")
+        lines.append(f"\nMorita le debe a Luca ${_fmt(diff)}")
     elif diff < 0:
-        lines.append(f"\n→ Luca le debe a Morita *${_fmt(abs(diff))}*")
+        lines.append(f"\nLuca le debe a Morita ${_fmt(abs(diff))}")
     else:
-        lines.append("\n→ Están al día ✅")
-
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        lines.append("\nEstán al día")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update):
+    if not _get_payer(update):
         return
-
     from datetime import datetime
     mes = datetime.now().strftime("%B %Y").capitalize()
     totals = get_monthly_summary()
-
     if not totals:
         await update.message.reply_text(f"No hay gastos este mes ({mes}).")
         return
-
-    lines = [f"📅 *Resumen {mes}*\n"]
+    lines = [f"Resumen {mes}\n"]
     total_general = 0.0
-    for payer, total in sorted(totals.items()):
-        lines.append(f"  {payer}: ${_fmt(total)}")
-        total_general += total
-    lines.append(f"\n  *Total: ${_fmt(total_general)}*")
-
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    for p, t in sorted(totals.items()):
+        lines.append(f"  {p}: ${_fmt(t)}")
+        total_general += t
+    lines.append(f"\n  Total: ${_fmt(total_general)}")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update):
+    if not _get_payer(update):
         return
     await update.message.reply_text(
-        "📝 *Cómo cargar gastos:*\n\n"
+        "Cómo cargar gastos:\n\n"
         "Mandá el concepto y el monto:\n"
-        "• `Verdulería 5900`\n"
-        "• `Pague en McDonald's 27540`\n"
-        "• `Carrefour 20189`\n"
-        "• `Disney+ 18399`\n\n"
-        "*Comandos:*\n"
-        "/undo — borra el último gasto tuyo\n"
-        "/saldo — balance total entre Luca y Morita\n"
-        "/resumen — totales del mes\n"
-        "/ayuda — este mensaje",
-        parse_mode="Markdown",
+        "- Verdulería 5900\n"
+        "- Pague en McDonald's 27540\n"
+        "- Carrefour 20189\n\n"
+        "Comandos:\n"
+        "/undo - borra tu último gasto\n"
+        "/saldo - balance total\n"
+        "/resumen - totales del mes\n"
+        "/ayuda - este mensaje"
     )
 
 
@@ -154,11 +137,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.edit_message_text("Escribí de nuevo el gasto con el monto incluido.")
 
 
-# ── entry point ───────────────────────────────────────────────────────────────
-
 def main() -> None:
     app = Application.builder().token(config.TELEGRAM_TOKEN).build()
-
     app.add_handler(CommandHandler("start", cmd_ayuda))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("undo", cmd_undo))
@@ -166,19 +146,8 @@ def main() -> None:
     app.add_handler(CommandHandler("resumen", cmd_resumen))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(callback_handler))
-
-    if config.WEBHOOK_URL:
-        logger.info("Starting webhook on port %d", config.PORT)
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=config.PORT,
-            url_path=config.TELEGRAM_TOKEN,
-            webhook_url=f"{config.WEBHOOK_URL}/{config.TELEGRAM_TOKEN}",
-        )
-    else:
-        logger.info("Starting polling (dev mode)")
-        app.run_polling()
+    app.run_polling()
 
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
