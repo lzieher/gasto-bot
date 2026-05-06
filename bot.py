@@ -1,5 +1,8 @@
 import logging
+import os
+import threading
 
+from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -15,7 +18,7 @@ from parser import parse_expense
 from sheets import append_expense, delete_last_expense, get_balance, get_monthly_summary
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
 
 def _fmt(amount: float) -> str:
@@ -30,33 +33,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     payer = _get_payer(update)
     if not payer:
         return
-
     text = update.message.text.strip()
-    status_msg = await update.message.reply_text("⏳ Procesando...")
-
+    status_msg = await update.message.reply_text("Procesando...")
     try:
         parsed = parse_expense(text, sender_name=payer)
     except Exception as e:
         logger.error("Parse error: %s", e)
-        await status_msg.edit_text("No pude entender el mensaje.\nProbá: Verdulería 5900")
+        await status_msg.edit_text("No pude entender el mensaje.\nProba: Verduleria 5900")
         return
-
     concepto = parsed.get("concepto", "").strip()
     monto = parsed.get("monto")
     pagador = parsed.get("pagador", payer).strip() or payer
-
     if not monto:
-        keyboard = [[InlineKeyboardButton("✏️ Escribir de nuevo", callback_data="redo")]]
+        keyboard = [[InlineKeyboardButton("Escribir de nuevo", callback_data="redo")]]
         await status_msg.edit_text(
-            f"No detecté el monto en: {text}\n\nProbá: {concepto} [monto]",
+            f"No detecte el monto en: {text}\n\nProba: {concepto} [monto]",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
         return
-
     try:
-        fecha = update.message.date
-        append_expense(concepto, int(monto), pagador, fecha)
-        await status_msg.edit_text(f"OK: {concepto} — ${_fmt(monto)} ({pagador}) guardado.")
+        append_expense(concepto, int(monto), pagador, update.message.date)
+        await status_msg.edit_text(f"OK: {concepto} -- ${_fmt(monto)} ({pagador}) guardado.")
     except Exception as e:
         logger.error("Sheets error: %s", e)
         await status_msg.edit_text("Error al guardar en el Sheet.")
@@ -70,7 +67,7 @@ async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if success:
         await update.message.reply_text(f"Borrado: {description}")
     else:
-        await update.message.reply_text(f"No encontré ningún gasto de {payer} para borrar.")
+        await update.message.reply_text(f"No encontre ningun gasto de {payer} para borrar.")
 
 
 async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -78,7 +75,7 @@ async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     totals = get_balance()
     if not totals:
-        await update.message.reply_text("No hay gastos cargados aún.")
+        await update.message.reply_text("No hay gastos cargados aun.")
         return
     lines = ["Balance total\n"]
     for p, t in sorted(totals.items()):
@@ -91,7 +88,7 @@ async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif diff < 0:
         lines.append(f"\nLuca le debe a Morita ${_fmt(abs(diff))}")
     else:
-        lines.append("\nEstán al día")
+        lines.append("\nEstan al dia")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -117,13 +114,12 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _get_payer(update):
         return
     await update.message.reply_text(
-        "Cómo cargar gastos:\n\n"
-        "Mandá el concepto y el monto:\n"
-        "- Verdulería 5900\n"
-        "- Pague en McDonald's 27540\n"
+        "Como cargar gastos:\n\n"
+        "- Verduleria 5900\n"
+        "- McDonalds 27540\n"
         "- Carrefour 20189\n\n"
         "Comandos:\n"
-        "/undo - borra tu último gasto\n"
+        "/undo - borra tu ultimo gasto\n"
         "/saldo - balance total\n"
         "/resumen - totales del mes\n"
         "/ayuda - este mensaje"
@@ -134,10 +130,21 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     query = update.callback_query
     await query.answer()
     if query.data == "redo":
-        await query.edit_message_text("Escribí de nuevo el gasto con el monto incluido.")
+        await query.edit_message_text("Escribi de nuevo el gasto con el monto incluido.")
 
 
 def main() -> None:
+    flask_app = Flask(_name_)
+
+    @flask_app.route("/health")
+    def health():
+        return "ok"
+
+    threading.Thread(
+        target=lambda: flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000))),
+        daemon=True
+    ).start()
+
     app = Application.builder().token(config.TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_ayuda))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
@@ -149,5 +156,5 @@ def main() -> None:
     app.run_polling()
 
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
