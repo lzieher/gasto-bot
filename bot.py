@@ -5,12 +5,8 @@ import threading
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
-    Application,
-    CallbackQueryHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
+    Application, CallbackQueryHandler, CommandHandler,
+    ContextTypes, MessageHandler, filters,
 )
 
 import config
@@ -18,14 +14,14 @@ from parser import parse_expense
 from sheets import append_expense, delete_last_expense, get_balance, get_monthly_summary
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(_name_)
+logger = logging.getLogger("bot")
 
 
 def _fmt(amount: float) -> str:
     return f"{int(amount):,}".replace(",", ".")
 
 
-def _get_payer(update: Update) -> str | None:
+def _get_payer(update: Update):
     return config.ALLOWED_USER_IDS.get(update.effective_user.id)
 
 
@@ -115,14 +111,8 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text(
         "Como cargar gastos:\n\n"
-        "- Verduleria 5900\n"
-        "- McDonalds 27540\n"
-        "- Carrefour 20189\n\n"
-        "Comandos:\n"
-        "/undo - borra tu ultimo gasto\n"
-        "/saldo - balance total\n"
-        "/resumen - totales del mes\n"
-        "/ayuda - este mensaje"
+        "- Verduleria 5900\n- McDonalds 27540\n- Carrefour 20189\n\n"
+        "Comandos:\n/undo /saldo /resumen /ayuda"
     )
 
 
@@ -134,7 +124,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 def main() -> None:
-    flask_app = Flask(_name_)
+    flask_app = Flask("health")
 
     @flask_app.route("/health")
     def health():
@@ -156,5 +146,4 @@ def main() -> None:
     app.run_polling()
 
 
-if _name_ == "_main_":
-    main()
+main()
